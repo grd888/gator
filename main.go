@@ -42,6 +42,7 @@ func main() {
 	c.Register("users", commands.HandlerListUsers)
 	c.Register("agg", commands.HandlerAgg)
 	c.Register("addfeed", commands.HandlerAddFeed)
+	c.Register("feeds", commands.HandlerListFeeds)
 	// get the command from the command line arguments
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: gator <command> [args]")

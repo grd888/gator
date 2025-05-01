@@ -166,3 +166,19 @@ func HandlerAddFeed(state *State, cmd Command) error {
 	fmt.Printf("Items: %d\n", len(rssFeed.Channel.Item))		
 	return nil	
 }
+
+func HandlerListFeeds(state *State, cmd Command) error {
+	feeds, err := state.DB.ListFeeds(context.Background())
+	if err != nil {
+		return fmt.Errorf("error listing feeds: %w", err)
+	}
+	for _, feed := range feeds {
+		// get the user name from the user id
+		user, err := state.DB.GetUser(context.Background(), feed.UserID)
+		if err != nil {
+			return fmt.Errorf("error getting user: %w", err)
+		}
+		fmt.Printf("* %s (URL: %s) (User: %s)\n", feed.Name, feed.Url, user.Name)
+	}
+	return nil
+}
