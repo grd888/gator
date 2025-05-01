@@ -3,11 +3,13 @@ package commands
 import (
 	"errors"
 	"github.com/grd888/gator/internal/config"
+	"github.com/grd888/gator/internal/database"
 )
 
-// State holds the application state including configuration
+// State holds the application state including configuration and database access
 type State struct {
 	Config *config.Config
+	DB     *database.Queries
 }
 
 type Command struct {

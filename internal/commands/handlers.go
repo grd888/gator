@@ -1,16 +1,68 @@
 package commands
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+	
+	"github.com/google/uuid"
+	"github.com/grd888/gator/internal/database"
 )
 // HandlerLogin handles the login command
 func HandlerLogin(state *State, cmd Command) error {
 	if len(cmd.Args) == 0 {
 		return errors.New("username is required")
 	}
+	// Check if the username exists in the database
+	username := cmd.Args[0]
+	_, err := state.DB.GetUserByName(context.Background(), username)
+	if err != nil {
+		return fmt.Errorf("user '%s' does not exist: %w", username, err)
+	}
+
 	state.Config.SetUser(cmd.Args[0])
 	fmt.Println("User set to:", cmd.Args[0])
+	return nil
+}
+
+func HandlerRegister(state *State, cmd Command) error {
+	if len(cmd.Args) < 1 {
+		return errors.New("username is required")
+	}
+	username := cmd.Args[0]
+	
+	// Create a new user with the provided username
+	now := time.Now()
+	userID := uuid.New()
+	
+	_, err := state.DB.CreateUser(context.Background(), database.CreateUserParams{
+		ID:        userID,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Name:      username,
+	})
+	
+	if err != nil {
+		if strings.Contains(err.Error(), "unique constraint") {
+			fmt.Println("Error: A user with that name already exists")
+			return err
+		}
+		fmt.Println("Error creating user:", err)
+		return err
+	}
+	
+	// Set the current user in config
+	err = state.Config.SetUser(username)
+	if err != nil {
+		fmt.Println("Error setting user in config:", err)
+		return err
+	}
+	
+	fmt.Printf("User created successfully: %s (ID: %s)\n", username, userID)
+
+
 	return nil
 }
 	

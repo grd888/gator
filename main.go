@@ -1,22 +1,43 @@
 package main
 
 import (
-	"os"
+	"database/sql"
 	"fmt"
-	"github.com/grd888/gator/internal/config"
+	"os"
+	
 	"github.com/grd888/gator/internal/commands"
+	"github.com/grd888/gator/internal/config"
+	"github.com/grd888/gator/internal/database"
+	_ "github.com/lib/pq" // PostgreSQL driver
 )
 
 func main() {
+	// First read the configuration to get the database URL
 	cfg, err := config.Read()
 	if err != nil {
 		fmt.Println("Error reading config:", err)
 		return
 	}
-	// Initialize application state
-	_ = commands.State{Config: &cfg}
+	
+	// Connect to the database using the URL from config
+	db, err := sql.Open("postgres", cfg.DBUrl)
+	if err != nil {
+		fmt.Println("Error opening database:", err)
+		return
+	}
+	defer db.Close()
+	
+	// Create a queries object for database operations
+	dbQueries := database.New(db)
+	
+	// Initialize application state with config and database access
+	appState := commands.State{
+		Config: &cfg,
+		DB:     dbQueries,
+	}
 	c := commands.NewCommands()
 	c.Register("login", commands.HandlerLogin)
+	c.Register("register", commands.HandlerRegister)
 	// get the command from the command line arguments
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: gator <command> [args]")
@@ -28,7 +49,7 @@ func main() {
 	// create the command instance
 	command := commands.Command{Name: cmd, Args: args}
 	// run the command
-	err = c.Run(&commands.State{Config: &cfg}, command)
+	err = c.Run(&appState, command)
 	if err != nil {
 		fmt.Println("Error running command:", err)
 		os.Exit(1)
