@@ -102,5 +102,67 @@ func HandlerAgg(state *State, cmd Command) error {
 	return nil
 }
 
+func HandlerAddFeed(state *State, cmd Command) error {
+	// Check if we have enough arguments
+	if len(cmd.Args) < 2 {
+		return errors.New("feed name and URL are required")
+	}
 	
+	// Check if a user is logged in
+	currentUser := state.Config.CurrentUserName
+	if currentUser == "" {
+		return errors.New("no user set - please login first")
+	}
 	
+	// Get the current user's ID from the database
+	user, err := state.DB.GetUserByName(context.Background(), currentUser)
+	if err != nil {
+		return fmt.Errorf("error finding current user: %w", err)
+	}
+	
+	name := cmd.Args[0]
+	url := cmd.Args[1]
+	
+	// Validate the feed by fetching it
+	rssFeed, err := fetchFeed(context.Background(), url)
+	if err != nil {
+		return fmt.Errorf("error fetching RSS feed: %w", err)
+	}
+	
+	// Use the feed title from the RSS if available, otherwise use the provided name
+	feedName := name
+	if rssFeed.Channel.Title != "" {
+		// If user provided a custom name, use it; otherwise use the feed's actual title
+		if name == url || name == "" {
+			feedName = rssFeed.Channel.Title
+		}
+	}
+	
+	// Create a new feed with the provided name and URL
+	now := time.Now()
+	feedID := uuid.New()
+	
+	_, err = state.DB.CreateFeed(context.Background(), database.CreateFeedParams{
+		ID:        feedID,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Name:      feedName, // Use the feed title from RSS or user-provided name
+		Url:       url,
+		UserID:    user.ID, // Use the actual user ID from the database
+	})
+	
+	if err != nil {
+		if strings.Contains(err.Error(), "unique constraint") {
+			fmt.Println("Error: A feed with that name already exists")
+			return err
+		}
+		fmt.Println("Error creating feed:", err)
+		return err
+	}
+	
+	fmt.Printf("Feed created successfully: %s (ID: %s)\n", feedName, feedID)
+	fmt.Printf("Title: %s\n", rssFeed.Channel.Title)
+	fmt.Printf("Description: %s\n", rssFeed.Channel.Description)
+	fmt.Printf("Items: %d\n", len(rssFeed.Channel.Item))		
+	return nil	
+}
