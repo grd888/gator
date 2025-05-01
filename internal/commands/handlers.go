@@ -142,7 +142,7 @@ func HandlerAddFeed(state *State, cmd Command) error {
 	now := time.Now()
 	feedID := uuid.New()
 	
-	_, err = state.DB.CreateFeed(context.Background(), database.CreateFeedParams{
+	createdFeed, err := state.DB.CreateFeed(context.Background(), database.CreateFeedParams{
 		ID:        feedID,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -160,7 +160,24 @@ func HandlerAddFeed(state *State, cmd Command) error {
 		return err
 	}
 	
-	fmt.Printf("Feed created successfully: %s (ID: %s)\n", feedName, feedID)
+	// Automatically create a feed follow record for the current user
+	feedFollowID := uuid.New()
+	feedFollow, err := state.DB.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID:        feedFollowID,
+		CreatedAt: now,
+		UpdatedAt: now,
+		FeedID:    createdFeed.ID,
+		UserID:    user.ID,
+	})
+	
+	if err != nil {
+		// If there's an error creating the feed follow, log it but don't fail the whole operation
+		// since the feed was already created successfully
+		fmt.Println("Warning: Feed created but could not be followed automatically:", err)
+	} else {
+		fmt.Printf("Feed created and followed successfully: %s\n", feedFollow.FeedName)
+	}
+	
 	fmt.Printf("Title: %s\n", rssFeed.Channel.Title)
 	fmt.Printf("Description: %s\n", rssFeed.Channel.Description)
 	fmt.Printf("Items: %d\n", len(rssFeed.Channel.Item))		
@@ -180,5 +197,89 @@ func HandlerListFeeds(state *State, cmd Command) error {
 		}
 		fmt.Printf("* %s (URL: %s) (User: %s)\n", feed.Name, feed.Url, user.Name)
 	}
+	return nil
+}
+
+func HandlerListFollowing(state *State, cmd Command) error {
+	// Check if a user is logged in
+	currentUser := state.Config.CurrentUserName
+	if currentUser == "" {
+		return errors.New("no user set - please login first")
+	}
+	
+	// Get the current user's ID from the database
+	user, err := state.DB.GetUserByName(context.Background(), currentUser)
+	if err != nil {
+		return fmt.Errorf("error finding current user: %w", err)
+	}
+	
+	// Get all feed follows for the current user
+	feedFollows, err := state.DB.GetFeedFollowsForUser(context.Background(), user.ID)
+	if err != nil {
+		return fmt.Errorf("error getting followed feeds: %w", err)
+	}
+	
+	if len(feedFollows) == 0 {
+		fmt.Println("You are not following any feeds.")
+		return nil
+	}
+	
+	fmt.Printf("Feeds followed by %s:\n", currentUser)
+	for _, follow := range feedFollows {
+		fmt.Printf("* %s\n", follow.FeedName)
+	}
+	
+	return nil
+}
+
+func HandlerFollowFeed(state *State, cmd Command) error {
+	// Check if we have enough arguments
+	if len(cmd.Args) < 1 {
+		return errors.New("feed URL is required")
+	}
+	
+	// Check if a user is logged in
+	currentUser := state.Config.CurrentUserName
+	if currentUser == "" {
+		return errors.New("no user set - please login first")
+	}
+	
+	// Get the current user's ID from the database
+	user, err := state.DB.GetUserByName(context.Background(), currentUser)
+	if err != nil {
+		return fmt.Errorf("error finding current user: %w", err)
+	}
+	
+	// Get the URL from arguments
+	url := cmd.Args[0]
+	
+	// Check if the feed exists in our database
+	feed, err := state.DB.GetFeedByUrl(context.Background(), url)
+	if err != nil {
+		// If the feed doesn't exist, return an error
+		return fmt.Errorf("feed with URL %s not found: %w", url, err)
+	}
+	
+	// Now create the feed follow
+	now := time.Now()
+	feedFollowID := uuid.New()
+	
+	feedFollow, err := state.DB.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID:        feedFollowID,
+		CreatedAt: now,
+		UpdatedAt: now,
+		FeedID:    feed.ID,
+		UserID:    user.ID,
+	})
+	
+	if err != nil {
+		if strings.Contains(err.Error(), "unique constraint") {
+			return fmt.Errorf("you are already following this feed")
+		}
+		return fmt.Errorf("error following feed: %w", err)
+	}
+	
+	fmt.Printf("Successfully followed feed: %s\n", feedFollow.FeedName)
+	fmt.Printf("User: %s\n", feedFollow.UserName)
 	return nil
 }
