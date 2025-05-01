@@ -11,6 +11,36 @@ import (
 	"github.com/google/uuid"
 	"github.com/grd888/gator/internal/database"
 )
+
+// parsePublishedDate attempts to parse a date string in various formats
+func parsePublishedDate(dateStr string) (time.Time, error) {
+	// List of time formats to try
+	formats := []string{
+		time.RFC1123Z,     // "Mon, 02 Jan 2006 15:04:05 -0700"
+		time.RFC1123,      // "Mon, 02 Jan 2006 15:04:05 MST"
+		time.RFC822Z,      // "02 Jan 06 15:04 -0700"
+		time.RFC822,       // "02 Jan 06 15:04 MST"
+		time.RFC3339,      // "2006-01-02T15:04:05Z07:00"
+		time.RFC3339Nano,  // "2006-01-02T15:04:05.999999999Z07:00"
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+		"02 Jan 2006",
+		"January 2, 2006",
+		"Jan 2, 2006",
+		"2006-01-02 15:04:05 -0700",
+		"2006-01-02 15:04:05 MST",
+	}
+
+	// Try each format
+	for _, format := range formats {
+		t, err := time.Parse(format, dateStr)
+		if err == nil {
+			return t, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("could not parse date: %s", dateStr)
+}
 // HandlerLogin handles the login command
 func HandlerLogin(state *State, cmd Command) error {
 	if len(cmd.Args) == 0 {
@@ -101,7 +131,7 @@ func scrapeFeeds(state *State) error {
 
 	// Mark it as fetched
 	now := time.Now()
-	err = state.DB.MarkFeedFetched(context.Background(), database.MarkFeedFetchedParams{
+	_, err = state.DB.MarkFeedFetched(context.Background(), database.MarkFeedFetchedParams{
 		LastFetchedAt: sql.NullTime{Time: now, Valid: true},
 		ID:            feed.ID,
 	})
@@ -115,10 +145,45 @@ func scrapeFeeds(state *State) error {
 		return fmt.Errorf("error fetching RSS feed: %w", err)
 	}
 
-	// Iterate over the items in the feed and print their titles to the console
-	fmt.Printf("Feed: %s\n", feed.Name)
+	// Iterate over the items in the feed and save them to the database
+	fmt.Printf("Feed: %s (%d items)\n", feed.Name, len(rssFeed.Channel.Item))
 	for _, item := range rssFeed.Channel.Item {
-		fmt.Printf("* %s\n", item.Title)
+		// Parse the published date
+		var publishedAt sql.NullTime
+		if item.PubDate != "" {
+			// Try different time formats
+			parsedTime, err := parsePublishedDate(item.PubDate)
+			if err != nil {
+				fmt.Printf("Warning: Could not parse published date '%s': %v\n", item.PubDate, err)
+			} else {
+				publishedAt = sql.NullTime{Time: parsedTime, Valid: true}
+			}
+		}
+
+		// Create a new post
+		postID := uuid.New()
+		_, err := state.DB.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          postID,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+			FeedID:      feed.ID,
+			Title:       item.Title,
+			Url:         item.Link,
+			Description: sql.NullString{String: item.Description, Valid: item.Description != ""},
+			PublishedAt: publishedAt,
+		})
+
+		if err != nil {
+			// If the post already exists, just ignore the error
+			if strings.Contains(err.Error(), "unique constraint") {
+				// Post already exists, skip it
+				continue
+			}
+			// Log other errors but continue processing
+			fmt.Printf("Error saving post '%s': %v\n", item.Title, err)
+		} else {
+			fmt.Printf("* Saved: %s\n", item.Title)
+		}
 	}
 	fmt.Println()
 
@@ -321,5 +386,59 @@ func HandlerFollowFeed(state *State, cmd Command, user database.User) error {
 	
 	fmt.Printf("Successfully followed feed: %s\n", feedFollow.FeedName)
 	fmt.Printf("User: %s\n", feedFollow.UserName)
+	return nil
+}
+
+func HandlerBrowse(state *State, cmd Command, user database.User) error {
+	// Default limit is 2 if not provided
+	limit := int32(2)
+	
+	// Check if we have a limit argument
+	if len(cmd.Args) > 0 {
+		// Try to parse the limit
+		n, err := fmt.Sscanf(cmd.Args[0], "%d", &limit)
+		if err != nil || n != 1 {
+			return fmt.Errorf("invalid limit: %s", cmd.Args[0])
+		}
+	}
+	
+	// Get posts for the current user
+	posts, err := state.DB.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  limit,
+	})
+	
+	if err != nil {
+		return fmt.Errorf("error getting posts: %w", err)
+	}
+	
+	if len(posts) == 0 {
+		fmt.Println("No posts found. Try following some feeds first.")
+		return nil
+	}
+	
+	fmt.Printf("Found %d posts:\n", len(posts))
+	for _, post := range posts {
+		// Format the published date if available
+		publishedAt := "unknown date"
+		if post.PublishedAt.Valid {
+			publishedAt = post.PublishedAt.Time.Format("Jan 02, 2006")
+		}
+		
+		fmt.Printf("\n* %s\n", post.Title)
+		fmt.Printf("  URL: %s\n", post.Url)
+		fmt.Printf("  Published: %s\n", publishedAt)
+		
+		// Print description if available
+		if post.Description.Valid && post.Description.String != "" {
+			// Truncate description if it's too long
+			desc := post.Description.String
+			if len(desc) > 100 {
+				desc = desc[:100] + "..."
+			}
+			fmt.Printf("  Description: %s\n", desc)
+		}
+	}
+	
 	return nil
 }
