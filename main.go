@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	
+
 	"github.com/grd888/gator/internal/commands"
 	"github.com/grd888/gator/internal/config"
 	"github.com/grd888/gator/internal/database"
@@ -18,7 +18,7 @@ func main() {
 		fmt.Println("Error reading config:", err)
 		return
 	}
-	
+
 	// Connect to the database using the URL from config
 	db, err := sql.Open("postgres", cfg.DBUrl)
 	if err != nil {
@@ -26,25 +26,26 @@ func main() {
 		return
 	}
 	defer db.Close()
-	
+
 	// Create a queries object for database operations
 	dbQueries := database.New(db)
-	
+
 	// Initialize application state with config and database access
 	appState := commands.State{
 		Config: &cfg,
 		DB:     dbQueries,
 	}
 	c := commands.NewCommands()
+	// These commands don't require a logged-in user
 	c.Register("login", commands.HandlerLogin)
 	c.Register("register", commands.HandlerRegister)
 	c.Register("reset", commands.HandlerReset)
-	c.Register("users", commands.HandlerListUsers)
-	c.Register("agg", commands.HandlerAgg)
-	c.Register("addfeed", commands.HandlerAddFeed)
-	c.Register("feeds", commands.HandlerListFeeds)
-	c.Register("follow", commands.HandlerFollowFeed)
-	c.Register("following", commands.HandlerListFollowing)
+	c.Register("users", commands.MiddlewareLoggedIn(commands.HandlerListUsers))
+	c.Register("agg", commands.MiddlewareLoggedIn(commands.HandlerAgg))
+	c.Register("addfeed", commands.MiddlewareLoggedIn(commands.HandlerAddFeed))
+	c.Register("feeds", commands.MiddlewareLoggedIn(commands.HandlerListFeeds))
+	c.Register("follow", commands.MiddlewareLoggedIn(commands.HandlerFollowFeed))
+	c.Register("following", commands.MiddlewareLoggedIn(commands.HandlerListFollowing))
 	// get the command from the command line arguments
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: gator <command> [args]")

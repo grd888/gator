@@ -75,7 +75,7 @@ func HandlerRegister(state *State, cmd Command) error {
 	return nil
 }
 
-func HandlerListUsers(state *State, cmd Command) error {
+func HandlerListUsers(state *State, cmd Command, user database.User) error {
 	users, err := state.DB.ListUsers(context.Background())
 	if err != nil {
 		return fmt.Errorf("error listing users: %w", err)
@@ -91,7 +91,7 @@ func HandlerListUsers(state *State, cmd Command) error {
 	return nil
 }
 
-func HandlerAgg(state *State, cmd Command) error {
+func HandlerAgg(state *State, cmd Command, user database.User) error {
 	url := "https://www.wagslane.dev/index.xml"
 
 	rssFeed, err := fetchFeed(context.Background(), url)
@@ -102,20 +102,14 @@ func HandlerAgg(state *State, cmd Command) error {
 	return nil
 }
 
-func HandlerAddFeed(state *State, cmd Command) error {
+func HandlerAddFeed(state *State, cmd Command, user database.User) error {
 	// Check if we have enough arguments
 	if len(cmd.Args) < 2 {
 		return errors.New("feed name and URL are required")
 	}
 	
-	// Check if a user is logged in
-	currentUser := state.Config.CurrentUserName
-	if currentUser == "" {
-		return errors.New("no user set - please login first")
-	}
-	
 	// Get the current user's ID from the database
-	user, err := state.DB.GetUserByName(context.Background(), currentUser)
+	user, err := state.DB.GetUserByName(context.Background(), user.Name)
 	if err != nil {
 		return fmt.Errorf("error finding current user: %w", err)
 	}
@@ -184,7 +178,7 @@ func HandlerAddFeed(state *State, cmd Command) error {
 	return nil	
 }
 
-func HandlerListFeeds(state *State, cmd Command) error {
+func HandlerListFeeds(state *State, cmd Command, user database.User) error {
 	feeds, err := state.DB.ListFeeds(context.Background())
 	if err != nil {
 		return fmt.Errorf("error listing feeds: %w", err)
@@ -200,19 +194,7 @@ func HandlerListFeeds(state *State, cmd Command) error {
 	return nil
 }
 
-func HandlerListFollowing(state *State, cmd Command) error {
-	// Check if a user is logged in
-	currentUser := state.Config.CurrentUserName
-	if currentUser == "" {
-		return errors.New("no user set - please login first")
-	}
-	
-	// Get the current user's ID from the database
-	user, err := state.DB.GetUserByName(context.Background(), currentUser)
-	if err != nil {
-		return fmt.Errorf("error finding current user: %w", err)
-	}
-	
+func HandlerListFollowing(state *State, cmd Command, user database.User) error {
 	// Get all feed follows for the current user
 	feedFollows, err := state.DB.GetFeedFollowsForUser(context.Background(), user.ID)
 	if err != nil {
@@ -224,7 +206,7 @@ func HandlerListFollowing(state *State, cmd Command) error {
 		return nil
 	}
 	
-	fmt.Printf("Feeds followed by %s:\n", currentUser)
+	fmt.Printf("Feeds followed by %s:\n", user.Name)
 	for _, follow := range feedFollows {
 		fmt.Printf("* %s\n", follow.FeedName)
 	}
@@ -232,22 +214,10 @@ func HandlerListFollowing(state *State, cmd Command) error {
 	return nil
 }
 
-func HandlerFollowFeed(state *State, cmd Command) error {
+func HandlerFollowFeed(state *State, cmd Command, user database.User) error {
 	// Check if we have enough arguments
 	if len(cmd.Args) < 1 {
 		return errors.New("feed URL is required")
-	}
-	
-	// Check if a user is logged in
-	currentUser := state.Config.CurrentUserName
-	if currentUser == "" {
-		return errors.New("no user set - please login first")
-	}
-	
-	// Get the current user's ID from the database
-	user, err := state.DB.GetUserByName(context.Background(), currentUser)
-	if err != nil {
-		return fmt.Errorf("error finding current user: %w", err)
 	}
 	
 	// Get the URL from arguments
