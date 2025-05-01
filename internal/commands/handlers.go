@@ -90,5 +90,17 @@ func HandlerListUsers(state *State, cmd Command) error {
 	}
 	return nil
 }
+
+func HandlerAgg(state *State, cmd Command) error {
+	url := "https://www.wagslane.dev/index.xml"
+
+	rssFeed, err := fetchFeed(context.Background(), url)
+	if err != nil {
+		return fmt.Errorf("error fetching RSS feed: %w", err)
+	}
+	fmt.Println(rssFeed)
+	return nil
+}
+
 	
 	
