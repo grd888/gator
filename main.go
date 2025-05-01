@@ -46,6 +46,7 @@ func main() {
 	c.Register("feeds", commands.MiddlewareLoggedIn(commands.HandlerListFeeds))
 	c.Register("follow", commands.MiddlewareLoggedIn(commands.HandlerFollowFeed))
 	c.Register("following", commands.MiddlewareLoggedIn(commands.HandlerListFollowing))
+	c.Register("unfollow", commands.MiddlewareLoggedIn(commands.HandlerUnfollowFeed))
 	// get the command from the command line arguments
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: gator <command> [args]")

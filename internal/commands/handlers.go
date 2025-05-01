@@ -214,6 +214,25 @@ func HandlerListFollowing(state *State, cmd Command, user database.User) error {
 	return nil
 }
 
+func HandlerUnfollowFeed(state *State, cmd Command, user database.User) error {
+	if len(cmd.Args) < 1 {
+		return errors.New("feed URL is required")
+	}
+	url := cmd.Args[0]
+
+	// Delete the feed follow record
+	err := state.DB.DeleteFeedFollow(context.Background(), database.DeleteFeedFollowParams{
+		UserID: user.ID,
+		Url:    url,
+	})
+	if err != nil {
+		return fmt.Errorf("error unfollowing feed: %w", err)
+	}
+
+	fmt.Printf("Successfully unfollowed feed: %s\n", url)
+	return nil
+}
+
 func HandlerFollowFeed(state *State, cmd Command, user database.User) error {
 	// Check if we have enough arguments
 	if len(cmd.Args) < 1 {
