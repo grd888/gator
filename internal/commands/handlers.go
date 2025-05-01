@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -91,15 +92,65 @@ func HandlerListUsers(state *State, cmd Command, user database.User) error {
 	return nil
 }
 
-func HandlerAgg(state *State, cmd Command, user database.User) error {
-	url := "https://www.wagslane.dev/index.xml"
+func scrapeFeeds(state *State) error {
+	// Get the next feed to fetch from the DB
+	feed, err := state.DB.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return fmt.Errorf("error getting next feed to fetch: %w", err)
+	}
 
-	rssFeed, err := fetchFeed(context.Background(), url)
+	// Mark it as fetched
+	now := time.Now()
+	err = state.DB.MarkFeedFetched(context.Background(), database.MarkFeedFetchedParams{
+		LastFetchedAt: sql.NullTime{Time: now, Valid: true},
+		ID:            feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("error marking feed as fetched: %w", err)
+	}
+
+	// Fetch the feed using the URL
+	rssFeed, err := fetchFeed(context.Background(), feed.Url)
 	if err != nil {
 		return fmt.Errorf("error fetching RSS feed: %w", err)
 	}
-	fmt.Println(rssFeed)
+
+	// Iterate over the items in the feed and print their titles to the console
+	fmt.Printf("Feed: %s\n", feed.Name)
+	for _, item := range rssFeed.Channel.Item {
+		fmt.Printf("* %s\n", item.Title)
+	}
+	fmt.Println()
+
 	return nil
+}
+
+func HandlerAgg(state *State, cmd Command, user database.User) error {
+	// Check if we have the correct number of arguments
+	if len(cmd.Args) < 1 {
+		return errors.New("time_between_reqs is required (e.g. 1s, 1m, 1h)")
+	}
+
+	// Parse the time_between_reqs argument
+	timeBetweenReqs := cmd.Args[0]
+	timeBetweenRequests, err := time.ParseDuration(timeBetweenReqs)
+	if err != nil {
+		return fmt.Errorf("invalid time duration: %w", err)
+	}
+
+	// Print a message indicating the collection interval
+	fmt.Printf("Collecting feeds every %s\n", timeBetweenRequests)
+
+	// Create a ticker to run the scrapeFeeds function at regular intervals
+	ticker := time.NewTicker(timeBetweenRequests)
+
+	// Run the scrapeFeeds function immediately and then every time the ticker ticks
+	for ; ; <-ticker.C {
+		err := scrapeFeeds(state)
+		if err != nil {
+			fmt.Printf("Error scraping feeds: %v\n", err)
+		}
+	}
 }
 
 func HandlerAddFeed(state *State, cmd Command, user database.User) error {
