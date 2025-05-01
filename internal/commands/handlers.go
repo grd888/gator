@@ -27,6 +27,15 @@ func HandlerLogin(state *State, cmd Command) error {
 	return nil
 }
 
+func HandlerReset(state *State, cmd Command) error {
+	err := state.DB.DeleteAllUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("error deleting users: %w", err)
+	}
+	fmt.Println("All users deleted")
+	return nil
+}
+
 func HandlerRegister(state *State, cmd Command) error {
 	if len(cmd.Args) < 1 {
 		return errors.New("username is required")
