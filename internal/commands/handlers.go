@@ -74,5 +74,21 @@ func HandlerRegister(state *State, cmd Command) error {
 
 	return nil
 }
+
+func HandlerListUsers(state *State, cmd Command) error {
+	users, err := state.DB.ListUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("error listing users: %w", err)
+	}
+	for _, user := range users {
+		// if user is the current user append (current)
+		if user.Name == state.Config.CurrentUserName {
+			fmt.Printf("* %s (current)\n", user.Name)
+		} else {
+			fmt.Printf("* %s\n", user.Name)
+		}
+	}
+	return nil
+}
 	
 	

@@ -39,6 +39,7 @@ func main() {
 	c.Register("login", commands.HandlerLogin)
 	c.Register("register", commands.HandlerRegister)
 	c.Register("reset", commands.HandlerReset)
+	c.Register("users", commands.HandlerListUsers)
 	// get the command from the command line arguments
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: gator <command> [args]")
